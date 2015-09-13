@@ -54,13 +54,23 @@ int main (void)
 
     stdin = stdout = &uart0_stream;
 
-    // set pin 5 of PORTB for output
-    DDRB |= _BV(DDB5);
-
     // USB Serial 0
     uart0_init(UART_BAUD_SELECT(9600, F_CPU));
-
     printf("mindstorms-motor!\n");
+
+    DDRB |= _BV(DDB0); // nSLEEP on Arduino D8
+    DDRB |= _BV(DDB1); // DIR on Arduino D9
+    DDRB |= _BV(DDB2); // PWM on Arduino D10
+    DDRB |= _BV(DDB3); // BRAKE (MODE1) on Arduino D11
+    DDRB &= ~_BV(DDB4); // nFAULT on Arduino D12
+    DDRB |= _BV(DDB5); // LED on Arduino D13
+
+    PORTB |= _BV(PORTB0);
+    PORTB |= _BV(PORTB1);
+    PORTB |= _BV(PORTB2);
+    PORTB &= ~_BV(PORTB3);
+
+
     while (1) {
         // pin 5 high to turn led on
         PORTB |= _BV(PORTB5);
