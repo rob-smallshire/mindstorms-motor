@@ -3,7 +3,7 @@
 
 #include <avr/io.h>
 
-void joystick_init(void);
+void init_adc(void);
 
-uint16_t read_adc(uint8_t channel);
+uint8_t read_adc(uint8_t channel);
 #endif

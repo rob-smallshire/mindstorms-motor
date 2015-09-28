@@ -3,9 +3,10 @@
 #include <avr/interrupt.h>
 
 #include "uart.h"
-#include "joystick.h"
+#include "current_sense.h"
 
 #include <util/delay.h>
+#include <util/atomic.h>
 
 #ifdef __GNUC__
 #  define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
@@ -18,7 +19,7 @@
 #else
 #  define UNUSED_FUNCTION(x) UNUSED_ ## x
 #endif
- 
+
 enum {
  BLINK_DELAY_MS = 100,
 };
@@ -45,13 +46,42 @@ static FILE uart0_stream = FDEV_SETUP_STREAM(
                             _FDEV_SETUP_RW);
 
 
+volatile uint16_t counter;
+//volatile uint8_t channels;
+uint8_t previous_channels;
+//volatile uint8_t channels_changed;
+
+
+ISR (PCINT2_vect)
+{
+    uint8_t channels = PIND & (_BV(PIND3) | _BV(PIND2));
+    uint8_t channels_changed = channels ^ previous_channels;
+
+    uint8_t a_channels = (channels_changed & _BV(PIND3)) >> 1;
+    uint8_t b_channels = channels_changed & _BV(PIND2);
+    uint8_t encoder_changed = a_channels ^ b_channels;
+
+    //uint8_t encoder_skipped = a_channels & b_channels;
+    if (encoder_changed)
+    {
+        uint8_t direction = ((channels & _BV(PIND3)) >> 1) ^ (previous_channels & _BV(PIND2));
+        if (direction & _BV(PIND2))
+        {
+            ++counter;
+        }
+        else
+        {
+            --counter;
+        }
+    }
+    previous_channels = channels;
+}
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 int main (void)
 {
-    joystick_init();
-
-    sei();
+    init_adc();
 
     stdin = stdout = &uart0_stream;
 
@@ -59,6 +89,7 @@ int main (void)
     uart0_init(UART_BAUD_SELECT(9600, F_CPU));
     printf("mindstorms-motor!\n");
 
+    // Port B
     DDRB |= _BV(DDB0); // nSLEEP on Arduino D8
     DDRB |= _BV(DDB1); // DIR on Arduino D9
     DDRB |= _BV(DDB2); // BRAKE on Arduino D10
@@ -70,6 +101,18 @@ int main (void)
     PORTB |= _BV(PORTB1);
     PORTB &= ~_BV(PORTB2);
     PORTB |= _BV(PORTB3);
+
+    // Port D
+    DDRD &= ~_BV(DDD2); // Encoder 0 on Arduino D2
+    DDRD &= ~_BV(DDD3); // Encoder 1 on Arduino D3
+
+    PORTD |= _BV(PORTD2); // Enable pullup on D2
+    PORTD |= _BV(PORTD3); // Enable pullup on D3
+
+    previous_channels = PIND & (_BV(PIND3) | _BV(PIND2));
+
+    PCICR = (1 << PCIE2);
+    PCMSK2 = (1 << PCINT18) | (1 << PCINT19);
 
     // Configure Timer 2 - 8 bit timer
 
@@ -96,6 +139,8 @@ int main (void)
 
     int8_t acceleration = -1;
 
+    sei();
+
     while (1) {
         // pin 5 high to turn led on
         PORTB |= _BV(PORTB5);
@@ -103,9 +148,10 @@ int main (void)
 
 
         OCR2A = speed;
-        printf("%d\n", speed);
+        printf("speed = %d", speed);
         if (speed == 0) {
             acceleration = +1;
+            PORTB ^= _BV(PORTB1);  // Reverse direction
         }
         else if (speed == 255)
         {
@@ -117,6 +163,18 @@ int main (void)
         // set pin 5 low to turn led off
         PORTB &= ~_BV(PORTB5);
         _delay_ms(BLINK_DELAY_MS);
+
+        uint8_t current = read_adc(0);
+        printf(", current = %" PRIu8, current);
+
+        uint16_t counter_copy;
+        ATOMIC_BLOCK(ATOMIC_RESTORESTATE)
+        {
+            counter_copy = counter;
+        }
+
+        printf(", counter = %" PRIu8, counter_copy);
+        printf("\n");
     }
     return 0;
 }

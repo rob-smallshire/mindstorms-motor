@@ -147,7 +147,7 @@ add_avr_executable(
         mindstorms-motor
         main.c
         uart.c
-        joystick.c
+        current_sense.c
 )
 
 # find_library(M_LIB m)
